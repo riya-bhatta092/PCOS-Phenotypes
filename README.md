@@ -109,7 +109,8 @@ Primary supervised model trained on GMM cluster labels using all 7 multi-view fe
 | `min_child_weight` | 5 | Minimum 5 samples per leaf |
 | `gamma` | 0.2 | Minimum loss reduction before split |
 | `subsample` | 0.8 | 80% data per tree — reduces variance |
-| `n_estimators` | 186 | Optimal from learning curve |
+|`n_estimators` | 200 | Max trees; best epoch identified at 151 |
+
 
 ### 4. SHAP Explainability
 SHAP (SHapley Additive exPlanations) values computed for every prediction. Two plots generated: mean absolute SHAP bar chart and directional beeswarm plot.
@@ -132,27 +133,27 @@ Synthetic Minority Oversampling applied **only to training data** (after the tra
 
 ### GMM Subtype Profiles
 
-| Marker | Cluster 0 — Metabolic (~89%) | Cluster 1 — Reproductive (~11%) |
+Marker | Cluster 0 — Metabolic (~88%) | Cluster 1 — Reproductive (~12%) |
 |--------|------------------------------|----------------------------------|
 | Glucose (mg/dL) | 89.12 | 101.98 |
 | Triglycerides (mg/dL) | 99.17 | 182.83 |
 | Testosterone (ng/dL) | 113.40 | **1,319.06** ⬆ |
 | SHBG (nmol/L) | 60.26 | **147.09** ⬆ |
-| PFOS (ng/mL) | 2.37 | 2.11 |
-| PFOA (ng/mL) | 1.19 | 0.87 |
-| PFNA (ng/mL) | 0.35 | 0.28 |
+| Size (n) | 1,085 (88%) | 147 (12%) |
 
-**Cluster 0 (Metabolic):** Insulin resistance profile — low SHBG, mildly elevated glucose and triglycerides.  
-**Cluster 1 (Reproductive):** Hyperandrogenism — dramatically elevated testosterone and SHBG, consistent with classic androgenic PCOS.
+**Cluster 0 (Metabolic):** Insulin resistance profile — elevated glucose and triglycerides, lower SHBG.  
+**Cluster 1 (Reproductive):** Hyperandrogenism — dramatically elevated testosterone (~12× higher) and SHBG, consistent with classic androgenic PCOS.
 
 ### Classification Accuracy
 
-| Model | Accuracy | Notes |
+ Model | Accuracy | Notes |
 |-------|----------|-------|
-| XGBoost (tuned) | 96.36% | `best_epoch=186`, all 7 features |
-| **XGBoost + SMOTE** | **97.98%** | **Best result — balanced training** |
-| XGBoost (GridSearchCV) | 95.23% | Automated tuning, cv=3 |
-| TabNet | 86.23% | Deep learning, `best_epoch=20` |
+| XGBoost (manual tuned) | 98.38% | `lr=0.05`, `best_epoch=151` |
+| **XGBoost (GridSearchCV)** | **98.48%** | **Best — 5-fold stratified, 324 combinations** |
+| XGBoost + SMOTE | 97.98% | Balanced training; **90% reproductive recall** |
+| TabNet (`lr=0.001`, original) | 86.24% | Slowest convergence, ~40 epochs to plateau |
+| TabNet (`lr=0.01`, selected) | 92.71% | Smooth convergence, `best_epoch=17` |
+| TabNet (`lr=0.1`, tested) | 94.33% | Highest peak but unstable — not selected |
 
 ### SHAP Feature Importance
 
@@ -162,7 +163,7 @@ Synthetic Minority Oversampling applied **only to training data** (after the tra
 | 2 | Glucose | ~0.93 | High glucose confirms metabolic subtype |
 | 3 | Testosterone | ~0.67 | High testosterone confirms reproductive subtype |
 | 4 | Triglycerides | ~0.50 | Secondary metabolic signal |
-| 5 | PFOA | ~0.27 | **Strongest environmental signal** — meaningful contribution |
+| 5 | PFOA | ~0.27 | **Strongest environmental signal** |
 | 6 | PFOS | ~0.11 | Minor environmental contribution |
 | 7 | PFNA | ~0.06 | Negligible contribution |
 
@@ -172,8 +173,8 @@ Synthetic Minority Oversampling applied **only to training data** (after the tra
 |------|----------|-------------|-------------|
 | Hormonal Only | 93.12% | 58.54% | Strongest single view |
 | Metabolic Only | 88.66% | 34.15% | Strong independent signal |
-| **Environmental Only** | **85.43%** | 12.20% | **Novel: PFAS carries genuine predictive power** |
-| All Views Combined | 96.36% | 80.49% | Each view contributes non-redundant information |
+| Environmental Only | 85.43% | 12.20% | PFAS carries genuine but secondary predictive power |
+| **All Views Combined** | **96.36%** | **80.49%** | **Each view contributes non-redundant information** |
 
 ### Minimal Subset Analysis
 
@@ -185,7 +186,8 @@ Synthetic Minority Oversampling applied **only to training data** (after the tra
 | + Triglycerides | 95.95% | 75.61% | 0.00% |
 | + PFOA | 96.76% | 80.49% | +0.81% |
 
-**Minimal subset: SHBG + Glucose + Testosterone → 95.95% accuracy (only 0.81% below the full 7-marker model)**
+**Minimal subset: SHBG + Glucose + Testosterone → 95.95% accuracy, only 0.81% below the full 7-marker model.**  
+Clinical implication: a 3-marker routine blood test could screen PCOS subtype at GP level without genetic or specialist testing.
 
 --
 
@@ -193,13 +195,11 @@ Synthetic Minority Oversampling applied **only to training data** (after the tra
 
 ## Limitations
 
-- **Cross-sectional data:** NHANES captures a single time point — association can be demonstrated but not causation.
+-  **Cross-sectional data:** NHANES captures a single time point — association can be demonstrated but not causation.
 - **Circular validation:** GMM cluster labels used as XGBoost targets validates separability, not independent clinical ground truth.
 - **PFAS missingness:** ~70% of PFAS values required KNN imputation — results should be validated on a dataset with complete PFAS measurements.
 - **Single cohort:** Findings are specific to NHANES 2017–2018 — external validation on an independent PCOS clinical cohort is needed.
-- **Dataset size:** n=1,232 limits TabNet performance and reduces statistical power for the minority reproductive subtype.
-
----
+- **Dataset size:** n=1,232 limits TabNet performance and reduces statistical power for the minority reproductive subtype (n=147).
 
 ## Installation & Usage
 
@@ -253,7 +253,8 @@ PFAS_J.xpt
 | 1 | **UMAP** | 2D projection — visual confirmation of subtype separation |
 | 2 | **VAE (Variational Autoencoder)** | Generative model — latent space subtype visualisation |
 | 3 | External cohort validation | Confirm findings generalise beyond NHANES |
-| 4 | PFOA severity analysis | Test whether PFOA correlates with subtype severity, not just membership |
+| 4 | Complete PFAS dataset | Validate PFAS findings without relying on KNN imputation |
+
 
 ---
 
